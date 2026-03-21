@@ -17,7 +17,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:3000',
   'https://business-meeting.vercel.app',
-  'https://xxx-meeting.vercel.app',
+  'https://business-meeting-loer.vercel.app/',
   'https://your-backblaze-or-cuugmstom-domain.com'
 ];
 
@@ -61,8 +61,13 @@ app.use(express.static('public'));
 const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || "de23#$QZoom2026!";
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: { user: smtpUser, pass: smtpPass }
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // Use SSL/TLS
+  auth: { user: smtpUser, pass: smtpPass },
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000,
+  socketTimeout: 10000
 });
 
 // Verify SMTP connection on startup
