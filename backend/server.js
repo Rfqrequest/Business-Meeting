@@ -17,7 +17,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:3000',
   'https://your-backblaze-or-cuugmstom-domain.com',
-  'https://business-meeting.onrender.com' // Removed trailing slash
+  'https://business-meeting.vercel.app/' // Removed trailing slash
 ];
 
 const PORT = process.env.PORT || 8080;
