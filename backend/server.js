@@ -16,8 +16,8 @@ const app = express();
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://your-backblaze-or-custom-domain.com',
-  'https://my-frontend-two-ecru.vercel.app'
+  'https://your-backblaze-or-cuugmstom-domain.com',
+  'https://business-meeting.vercel.app/'
 ];
 
 const PORT = process.env.PORT || 8080;
