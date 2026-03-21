@@ -16,8 +16,9 @@ const app = express();
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://your-backblaze-or-cuugmstom-domain.com',
-  'https://business-meeting.vercel.app/' // Removed trailing slash
+  'https://business-meeting.vercel.app',
+  'https://xxx-meeting.vercel.app',
+  'https://your-backblaze-or-cuugmstom-domain.com'
 ];
 
 const PORT = process.env.PORT || 8080;
@@ -35,13 +36,19 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     // Normalize origin by removing trailing slash if present
-    const normalizedOrigin = origin.replace(/\/$/, "");
+    const normalizedOrigin = origin.replace(/\/$/, "").toLowerCase();
     
-    if (allowedOrigins.includes(normalizedOrigin)) {
+    // Check if origin matches any allowed pattern
+    const isAllowed = allowedOrigins.some(allowed => {
+      const normalizedAllowed = allowed.replace(/\/$/, "").toLowerCase();
+      return normalizedOrigin === normalizedAllowed;
+    });
+
+    if (isAllowed) {
       callback(null, true);
     } else {
-      console.warn(`CORS blocked for origin: ${origin}`);
-      callback(new Error('CORS blocked'));
+      console.warn(`CORS blocked for origin: ${origin} (Normalized: ${normalizedOrigin})`);
+      callback(new Error(`CORS blocked for origin: ${origin}`));
     }
   },
   credentials: true
