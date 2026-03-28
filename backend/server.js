@@ -82,11 +82,22 @@ const transporter = nodemailer.createTransport({
 
 transporter.verify((error, success) => {
   if (error) {
-    console.error("❌ SMTP Verification Error:", error.message);
-    console.error("DEBUG: host=smtp.gmail.com, port=587, secure=false, user=" + smtpUser);
+    console.error("❌ SMTP Verification Error Details:", error.message);
+    console.error("Ensure SMTP_USER and SMTP_PASS are set correctly in Render environment variables.");
+    console.error("Gmail 'App Password' is required for 2FA accounts.");
+    console.error("If Port 465 is blocked, try Port 587 with secure: false.");
   } else {
-    console.log("✅ Mail Server Ready (Port 587)");
+    console.log("✅ Mail Server is ready to send messages (Port 587)");
   }
+});
+
+// Global error handlers to prevent crashes
+process.on('uncaughtException', (err) => {
+  console.error('🔥 UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥 UNHANDLED REJECTION:', reason);
 });
 
 // --- HELPERS ---
@@ -99,7 +110,7 @@ function getClientIp(req) {
 
 async function getLocationFromIp(ip) {
   return new Promise((resolve) => {
-    https.get(`https://ip-api.com/json/${ip}?fields=status,message,city,regionName,country`, (resp) => {
+    const request = https.get(`https://ip-api.com/json/${ip}?fields=status,message,city,regionName,country`, { timeout: 5000 }, (resp) => {
       let data = '';
       resp.on('data', chunk => data += chunk);
       resp.on('end', () => {
@@ -110,18 +121,30 @@ async function getLocationFromIp(ip) {
             : 'Location unavailable');
         } catch (e) { resolve('Location error'); }
       });
-    }).on('error', () => resolve('Location error'));
+    });
+    
+    request.on('error', () => resolve('Location error'));
+    request.on('timeout', () => {
+      request.destroy();
+      resolve('Location timeout');
+    });
   });
 }
 
 async function sendTelegramAlert(message) {
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: message })
+      body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: message }),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
   } catch (e) { console.error('Telegram error:', e.message); }
 }
 
@@ -226,7 +249,28 @@ app.get('/api/test-email', async (req, res) => {
     res.json({ success: true, message: "Test email sent!", id: info.messageId });
   } catch (error) {
     console.error("❌ Test Email Failed:", error);
-    res.status(500).json({ success: false, error: error.message, stack: error.stack });
+    let extra = "";
+    if (error.code === 'ETIMEDOUT') {
+      extra = " (Render blocks Port 465/587 by default. Contact Render Support to unblock or use SendGrid/Telegram)";
+    }
+    res.status(500).json({ success: false, error: error.message + extra, code: error.code });
+  }
+});
+
+// 🚀 TEST TELEGRAM ENDPOINT
+app.get('/api/test-telegram', async (req, res) => {
+  try {
+    if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+      return res.status(400).json({ success: false, error: "Telegram variables are not set in .env" });
+    }
+    
+    console.log("[TEST] Sending test Telegram message...");
+    await sendTelegramAlert("🧪 Zoom Backend Test Message: Telegram is working correctly! ✅");
+    
+    res.json({ success: true, message: "Telegram test message sent!" });
+  } catch (error) {
+    console.error("❌ Telegram Test Failed:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
